@@ -8,7 +8,6 @@ class Pcl < Formula
   head "https://github.com/PointCloudLibrary/pcl.git"
 
   bottle do
-    root_url "https://homebrew.bintray.com/bottles"
     sha256 "f7a89d9b04578cbfcf21160d5ebd78fa6feeab3ded876678b7bfc23f989a8f2e" => :catalina
     sha256 "593a588bbdce10f083057cb56a2c66abd632f066ab90f35c40facf6b152ee5b9" => :mojave
     sha256 "d14889b636e81d1427a7d0300c028b571ac038e54b3760eba8900a7175d210c1" => :high_sierra
