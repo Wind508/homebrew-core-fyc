@@ -1,38 +1,35 @@
 class Pcl < Formula
   desc "Library for 2D/3D image and point cloud processing"
   homepage "https://pointclouds.org/"
-  url "https://github.com/PointCloudLibrary/pcl/archive/pcl-1.12.0.tar.gz"
-  sha256 "21dfa9a268de9675c1f94d54d9402e4e02120a0aa4215d064436c52b7d5bd48f"
+  url "https://github.com/PointCloudLibrary/pcl/archive/pcl-1.9.1.tar.gz"
+  sha256 "0add34d53cd27f8c468a59b8e931a636ad3174b60581c0387abb98a9fc9cddb6"
   license "BSD-3-Clause"
-  revision 1
-  head "https://github.com/PointCloudLibrary/pcl.git", branch: "master"
+  revision 9
+  head "https://github.com/PointCloudLibrary/pcl.git"
 
   bottle do
-    sha256 cellar: :any,                 arm64_big_sur: "e496a31533633ec5cf7be22fb21263b055bb687d26f32eaafbe4c73730f4d06a"
-    sha256 cellar: :any,                 big_sur:       "b88a242bc2fffa34de88c90bead3d90b6d70164b16794f76e35a06729d481ca2"
-    sha256 cellar: :any,                 catalina:      "73b9c13e364e61267c1aace859a398bde588e6ee6504a386884c83f3df2224c1"
-    sha256 cellar: :any_skip_relocation, x86_64_linux:  "92b130c0b6d7ebe1af990efd4dd1cdc2042125477a139b8a3cc4163da7dfc7ef"
+    root_url "https://homebrew.bintray.com/bottles"
+    sha256 "f7a89d9b04578cbfcf21160d5ebd78fa6feeab3ded876678b7bfc23f989a8f2e" => :catalina
+    sha256 "593a588bbdce10f083057cb56a2c66abd632f066ab90f35c40facf6b152ee5b9" => :mojave
+    sha256 "d14889b636e81d1427a7d0300c028b571ac038e54b3760eba8900a7175d210c1" => :high_sierra
   end
 
-  depends_on "cmake" => [:build, :test]
-  depends_on "pkg-config" => [:build, :test]
+  depends_on "cmake" => :build
+  depends_on "pkg-config" => :build
   depends_on "boost"
   depends_on "cminpack"
   depends_on "eigen"
   depends_on "flann"
   depends_on "glew"
-  depends_on "libomp"
-  depends_on "libpcap"
   depends_on "libusb"
   depends_on "qhull"
-  depends_on "qt@5"
   depends_on "vtk"
 
-  on_linux do
-    depends_on "gcc"
+  # Upstream patch for boost 1.70.0
+  patch do
+    url "https://github.com/PointCloudLibrary/pcl/commit/648932bc.diff?full_index=1"
+    sha256 "23f2cced7786715c59b49a48e4037eb9dea9abee099c4c5c92d95a647636b5ec"
   end
-
-  fails_with gcc: "5" # qt@5 is built with GCC
 
   def install
     args = std_cmake_args + %w[
@@ -41,14 +38,16 @@ class Pcl < Formula
       -DBUILD_apps_3d_rec_framework=AUTO_OFF
       -DBUILD_apps_cloud_composer=AUTO_OFF
       -DBUILD_apps_in_hand_scanner=AUTO_OFF
+      -DBUILD_apps_optronic_viewer=AUTO_OFF
       -DBUILD_apps_point_cloud_editor=AUTO_OFF
-      -DBUILD_examples:BOOL=OFF
+      -DBUILD_examples:BOOL=ON
       -DBUILD_global_tests:BOOL=OFF
       -DBUILD_outofcore:BOOL=AUTO_OFF
       -DBUILD_people:BOOL=AUTO_OFF
-      -DBUILD_simulation:BOOL=ON
+      -DBUILD_simulation:BOOL=AUTO_OFF
       -DWITH_CUDA:BOOL=OFF
       -DWITH_DOCS:BOOL=OFF
+      -DWITH_QT:BOOL=FALSE
       -DWITH_TUTORIALS:BOOL=OFF
     ]
 
@@ -67,58 +66,5 @@ class Pcl < Formula
 
   test do
     assert_match "tiff files", shell_output("#{bin}/pcl_tiff2pcd -h", 255)
-    # inspired by https://pointclouds.org/documentation/tutorials/writing_pcd.html
-    (testpath/"CMakeLists.txt").write <<~EOS
-      cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
-      project(pcd_write)
-      find_package(PCL 1.2 REQUIRED)
-      include_directories(${PCL_INCLUDE_DIRS})
-      link_directories(${PCL_LIBRARY_DIRS})
-      add_definitions(${PCL_DEFINITIONS})
-      add_executable (pcd_write pcd_write.cpp)
-      target_link_libraries (pcd_write ${PCL_LIBRARIES})
-    EOS
-    (testpath/"pcd_write.cpp").write <<~EOS
-      #include <iostream>
-      #include <pcl/io/pcd_io.h>
-      #include <pcl/point_types.h>
-
-      int main (int argc, char** argv)
-      {
-        pcl::PointCloud<pcl::PointXYZ> cloud;
-
-        // Fill in the cloud data
-        cloud.width    = 2;
-        cloud.height   = 1;
-        cloud.is_dense = false;
-        cloud.points.resize (cloud.width * cloud.height);
-        int i = 1;
-        for (auto& point: cloud)
-        {
-          point.x = i++;
-          point.y = i++;
-          point.z = i++;
-        }
-
-        pcl::io::savePCDFileASCII ("test_pcd.pcd", cloud);
-        return (0);
-      }
-    EOS
-    mkdir "build" do
-      # the following line is needed to workaround a bug in test-bot
-      # (Homebrew/homebrew-test-bot#544) when bumping the boost
-      # revision without bumping this formula's revision as well
-      ENV.prepend_path "PKG_CONFIG_PATH", Formula["eigen"].opt_share/"pkgconfig"
-      ENV.delete "CPATH" # `error: no member named 'signbit' in the global namespace`
-      system "cmake", "..", "-DQt5_DIR=#{Formula["qt@5"].opt_lib}/cmake/Qt5",
-                            *std_cmake_args
-      system "make"
-      system "./pcd_write"
-      assert_predicate (testpath/"build/test_pcd.pcd"), :exist?
-      output = File.read("test_pcd.pcd")
-      assert_match "POINTS 2", output
-      assert_match "1 2 3", output
-      assert_match "4 5 6", output
-    end
   end
 end
